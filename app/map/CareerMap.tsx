@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useEffect, useMemo, useState, useRef } from "react";
-import ReactFlow, { type Edge, type Node, MarkerType } from "reactflow";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import ReactFlow, { type Edge, type Node, type ReactFlowInstance, MarkerType } from "reactflow";
 import "reactflow/dist/style.css";
 
 import SubjectNode from "@/app/components/SubjectNode";
@@ -32,19 +32,19 @@ type StatusRow = {
     passed_via: "promo" | "final" | null;
 };
 
-const NODE_W = 300;
-const NODE_H = 78;
+// ✅ Más grande todo
+const NODE_W = 330;
+const NODE_H = 88;
 
-// ✅ Layout horizontal (años en filas)
-const YEAR_GAP_Y = 70;
-const YEAR_TOP_INNER = 60;
+const YEAR_GAP_Y = 80;
+const YEAR_TOP_INNER = 70;
 const COLS_PER_YEAR = 3;
 
-const CELL_W = 340;
-const CELL_H = 110;
+const CELL_W = 390;
+const CELL_H = 130;
 
-const YEAR_LEFT_PAD = 180;
-const TOP_PAD = 40;
+const YEAR_LEFT_PAD = 200;
+const TOP_PAD = 46;
 
 function nodeStyleFor(status: NodeStatus, isHeader = false): React.CSSProperties {
     if (isHeader) {
@@ -56,6 +56,7 @@ function nodeStyleFor(status: NodeStatus, isHeader = false): React.CSSProperties
             boxSizing: "border-box",
             userSelect: "none",
             pointerEvents: "none",
+            cursor: "default",
         };
     }
 
@@ -67,16 +68,15 @@ function nodeStyleFor(status: NodeStatus, isHeader = false): React.CSSProperties
         background: "rgba(15,15,15,.92)",
         color: "#fff",
         boxSizing: "border-box",
-        transition:
-            "box-shadow .12s ease, transform .12s ease, opacity .12s ease, border-color .12s ease",
+        transition: "box-shadow .12s ease, opacity .12s ease, border-color .12s ease",
+        cursor: "default",
     };
 
     if (status === "aprobada") {
         return {
             ...base,
             border: "1px solid rgba(34,197,94,.65)",
-            boxShadow:
-                "0 0 0 1px rgba(34,197,94,.15), 0 10px 30px rgba(34,197,94,.08)",
+            boxShadow: "0 0 0 1px rgba(34,197,94,.15), 0 10px 30px rgba(34,197,94,.08)",
         };
     }
 
@@ -84,8 +84,7 @@ function nodeStyleFor(status: NodeStatus, isHeader = false): React.CSSProperties
         return {
             ...base,
             border: "1px solid rgba(234,179,8,.65)",
-            boxShadow:
-                "0 0 0 1px rgba(234,179,8,.15), 0 10px 30px rgba(234,179,8,.08)",
+            boxShadow: "0 0 0 1px rgba(234,179,8,.15), 0 10px 30px rgba(234,179,8,.08)",
         };
     }
 
@@ -93,8 +92,7 @@ function nodeStyleFor(status: NodeStatus, isHeader = false): React.CSSProperties
         return {
             ...base,
             border: "1px solid rgba(59,130,246,.65)",
-            boxShadow:
-                "0 0 0 1px rgba(59,130,246,.15), 0 10px 30px rgba(59,130,246,.08)",
+            boxShadow: "0 0 0 1px rgba(59,130,246,.15), 0 10px 30px rgba(59,130,246,.08)",
         };
     }
 
@@ -102,27 +100,29 @@ function nodeStyleFor(status: NodeStatus, isHeader = false): React.CSSProperties
         return {
             ...base,
             border: "1px dashed rgba(59,130,246,.65)",
-            boxShadow:
-                "0 0 0 1px rgba(59,130,246,.10), 0 10px 30px rgba(59,130,246,.06)",
+            boxShadow: "0 0 0 1px rgba(59,130,246,.10), 0 10px 30px rgba(59,130,246,.06)",
         };
     }
 
-    // bloqueada
+    // bloqueada / pendiente
     return { ...base, opacity: 0.65 };
 }
 
 export default function CareerMap() {
     const planId = "ea89a8b8-a467-47ad-8182-f4d773d650b0";
 
-    const [nodes, setNodes] = useState<Node[]>([]);
-    const [edges, setEdges] = useState<Edge[]>([]);
+    // ✅ crudo
+    const [rawNodes, setRawNodes] = useState<Node[]>([]);
+    const [rawEdges, setRawEdges] = useState<Edge[]>([]);
 
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [refreshKey, setRefreshKey] = useState(0);
 
-    // ✅ Hover para resaltar flechas
     const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
     const hoverTimer = useRef<number | null>(null);
+
+    // ✅ instancia sin useReactFlow()
+    const rf = useRef<ReactFlowInstance | null>(null);
 
     const nodeTypes = useMemo(
         () => ({
@@ -150,7 +150,7 @@ export default function CareerMap() {
             const s = (subjects ?? []) as SubjectRow[];
             const years = Array.from(new Set(s.map((x) => x.year))).sort((a, b) => a - b);
 
-            // 2) Correlativas (traemos todas y filtramos nosotros)
+            // 2) Correlativas (rendir)
             const { data: prereqs, error: prereqErr } = await supabase
                 .from("subject_prereq")
                 .select("subject_id, prereq_subject_id, prereq_type");
@@ -159,9 +159,7 @@ export default function CareerMap() {
             if (prereqErr) console.error("Error prereqs:", prereqErr);
 
             const pAll = (prereqs ?? []) as PrereqRow[];
-            const p = pAll.filter(
-                (r) => String(r.prereq_type ?? "").trim().toLowerCase() === "rendir"
-            );
+            const p = pAll.filter((r) => String(r.prereq_type ?? "").trim().toLowerCase() === "rendir");
 
             // 3) Estados
             const { data: statuses, error: statusErr } = await supabase
@@ -183,7 +181,6 @@ export default function CareerMap() {
                 passedById.set(row.subject_id, row.passed_via ?? null);
             }
 
-            // prereqsBySubject: materia -> correlativas "rendir"
             const prereqsBySubject = new Map<string, string[]>();
             for (const r of p) {
                 const arr = prereqsBySubject.get(r.subject_id) ?? [];
@@ -191,19 +188,14 @@ export default function CareerMap() {
                 prereqsBySubject.set(r.subject_id, arr);
             }
 
-            // ✅ cumple para rendir si TODAS las correlativas están APROBADAS
             const prereqInfo = (subjectId: string) => {
                 const prereqIds = prereqsBySubject.get(subjectId) ?? [];
                 const hasPrereqs = prereqIds.length > 0;
-
-                const allApproved = prereqIds.every(
-                    (pr) => (statusById.get(pr) ?? "pendiente") === "aprobada"
-                );
-
+                const allApproved = prereqIds.every((pr) => (statusById.get(pr) ?? "pendiente") === "aprobada");
                 return { hasPrereqs, allApproved, prereqIds };
             };
 
-            // Layout dinámico (años no se pisan)
+            // Layout
             const subjectsByYear = new Map<number, SubjectRow[]>();
             for (const subj of s) {
                 const arr = subjectsByYear.get(subj.year) ?? [];
@@ -219,15 +211,14 @@ export default function CareerMap() {
 
                 const count = (subjectsByYear.get(year) ?? []).length;
                 const rowsNeeded = Math.max(1, Math.ceil(count / COLS_PER_YEAR));
-
                 const blockHeight = YEAR_TOP_INNER + rowsNeeded * CELL_H + YEAR_GAP_Y;
+
                 cursorY += blockHeight;
             }
 
-            // Headers (izquierda)
+            // Headers
             const headerNodes: Node[] = years.map((year) => {
                 const y0 = yearY.get(year) ?? TOP_PAD;
-
                 return {
                     id: `header-year-${year}`,
                     type: "header",
@@ -251,18 +242,14 @@ export default function CareerMap() {
                 };
             });
 
-            // Materias
+            // Subjects
             const subjectNodes: Node[] = s.map((subj) => {
                 const stt = statusById.get(subj.id) ?? "pendiente";
                 const { hasPrereqs, allApproved } = prereqInfo(subj.id);
 
-                // estado calculado usando SOLO rendir
                 let computedStatus: NodeStatus;
-                if (stt !== "pendiente") {
-                    computedStatus = stt;
-                } else {
-                    computedStatus = !hasPrereqs ? "disponible" : allApproved ? "disponible" : "bloqueada";
-                }
+                if (stt !== "pendiente") computedStatus = stt;
+                else computedStatus = !hasPrereqs ? "disponible" : allApproved ? "disponible" : "bloqueada";
 
                 const grade = gradeById.get(subj.id);
                 const passed = passedById.get(subj.id);
@@ -278,13 +265,11 @@ export default function CareerMap() {
                                     ? "Puedo rendir"
                                     : "";
 
-                // grid dentro del año
                 const idx = (subj.order_in_cell ?? 1) - 1;
                 const colIndex = idx % COLS_PER_YEAR;
                 const rowIndex = Math.floor(idx / COLS_PER_YEAR);
 
                 const y0 = yearY.get(subj.year) ?? TOP_PAD;
-
                 const x = YEAR_LEFT_PAD + colIndex * CELL_W;
                 const y = y0 + YEAR_TOP_INNER + rowIndex * CELL_H;
 
@@ -299,30 +284,26 @@ export default function CareerMap() {
                         status: computedStatus,
                         grade: grade ?? null,
                         passedVia: passed ?? null,
+                        isFocus: false,
+                        isNeighbor: false,
                     },
                     position: { x, y },
                     style: nodeStyleFor(computedStatus, false),
                 };
             });
 
-            setNodes([...headerNodes, ...subjectNodes]);
+            setRawNodes([...headerNodes, ...subjectNodes]);
 
-            setEdges(
+            // Edges (handles out/in)
+            setRawEdges(
                 p.map((r) => ({
                     id: `${r.prereq_subject_id}->${r.subject_id}`,
                     source: r.prereq_subject_id,
                     target: r.subject_id,
-
-                    // ✅ engancha a tus handles
+                    type: "bezier",
                     sourceHandle: "out",
                     targetHandle: "in",
-
-                    type: "bezier",
-                    pathOptions: { curvature: 0.35 } as any,
-                    animated: false,
-                    data: {
-                        ok: (statusById.get(r.prereq_subject_id) ?? "pendiente") === "aprobada",
-                    },
+                    data: { ok: (statusById.get(r.prereq_subject_id) ?? "pendiente") === "aprobada" },
                 })) as Edge[]
             );
         })();
@@ -332,71 +313,121 @@ export default function CareerMap() {
         };
     }, [refreshKey]);
 
+    // ✅ fitView cuando cambian nodos (carga inicial / refresh)
+    useEffect(() => {
+        const inst = rf.current;
+        if (!inst) return;
+        if (rawNodes.length === 0) return;
+
+        const t = window.setTimeout(() => {
+            inst.fitView({ padding: 0.18, includeHiddenNodes: true, duration: 280 });
+        }, 60);
+
+        return () => window.clearTimeout(t);
+    }, [rawNodes.length, rawEdges.length]);
+
+    // foco: seleccionado gana sobre hover
+    const focusId = selectedId ?? hoveredNodeId;
+
+    // nodos conectados al foco
+    const connectedIds = useMemo(() => {
+        const set = new Set<string>();
+        if (!focusId) return set;
+        set.add(focusId);
+
+        for (const e of rawEdges) {
+            if (e.source === focusId) set.add(String(e.target));
+            if (e.target === focusId) set.add(String(e.source));
+        }
+        return set;
+    }, [rawEdges, focusId]);
+
+    // edges con highlight
     const styledEdges = useMemo(() => {
-        // ✅ prioridad: hover > selected
-        const activeNodeId = hoveredNodeId ?? selectedId;
-        const isActiveAny = activeNodeId != null;
+        const isFocusing = !!focusId;
 
-        return edges.map((e) => {
+        return rawEdges.map((e) => {
             const ok = Boolean((e.data as any)?.ok);
-            const isConnected =
-                activeNodeId != null && (e.source === activeNodeId || e.target === activeNodeId);
+            const isConnected = focusId != null && (e.source === focusId || e.target === focusId);
 
-            // Base (apagado)
-            const baseStroke = ok ? "rgba(34,197,94,.35)" : "rgba(148,163,184,.22)";
-            const baseWidth = ok ? 1.4 : 1.2;
+            const baseStroke = ok ? "rgba(34,197,94,.32)" : "rgba(148,163,184,.20)";
+            const baseWidth = ok ? 1.6 : 1.3;
 
-            // Más apagado cuando hay un nodo activo pero esta arista no conecta
-            const dimStroke = ok ? "rgba(34,197,94,.14)" : "rgba(148,163,184,.08)";
-            const dimWidth = ok ? 1.05 : 1.0;
+            const dimStroke = ok ? "rgba(34,197,94,.12)" : "rgba(148,163,184,.08)";
+            const dimWidth = ok ? 1.1 : 1.0;
 
-            // Highlight
-            const hiStroke = ok ? "rgba(34,197,94,.90)" : "rgba(226,232,240,.80)";
-            const hiWidth = ok ? 2.2 : 2.0;
+            const hiStroke = ok ? "rgba(34,197,94,.92)" : "rgba(226,232,240,.82)";
+            const hiWidth = ok ? 3.0 : 2.6;
 
-            const stroke = isActiveAny ? (isConnected ? hiStroke : dimStroke) : baseStroke;
-            const strokeWidth = isActiveAny ? (isConnected ? hiWidth : dimWidth) : baseWidth;
+            const stroke = isFocusing ? (isConnected ? hiStroke : dimStroke) : baseStroke;
+            const strokeWidth = isFocusing ? (isConnected ? hiWidth : dimWidth) : baseWidth;
 
-            // punta más chica (para que no quede gigante al resaltar)
-            const markerColor = stroke;
+            const markerSize = isConnected ? 10 : 9;
 
             return {
                 ...e,
-                type: "bezier",
                 animated: Boolean(isConnected),
                 style: {
                     stroke,
                     strokeWidth,
                     strokeDasharray: ok ? undefined : "5 6",
-                    opacity: isActiveAny ? (isConnected ? 1 : 0.18) : 0.38,
-                    filter: isConnected
-                        ? `drop-shadow(0 0 6px ${stroke}) drop-shadow(0 0 14px ${stroke})`
-                        : "none",
+                    opacity: isFocusing ? (isConnected ? 1 : 0.12) : 0.30,
+                    filter: isConnected ? `drop-shadow(0 0 6px ${stroke}) drop-shadow(0 0 14px ${stroke})` : "none",
                 },
                 markerEnd: {
                     type: MarkerType.ArrowClosed,
-                    width: isConnected ? 12 : 10,
-                    height: isConnected ? 12 : 10,
-                    color: markerColor,
+                    width: markerSize,
+                    height: markerSize,
+                    color: stroke,
                 },
             } as Edge;
         });
-    }, [edges, hoveredNodeId, selectedId]);
+    }, [rawEdges, focusId]);
 
-    // ✅ data derivada para el panel
+    // nodes: glow/opacity + flags (sin outline feo)
+    const styledNodes = useMemo(() => {
+        const isFocusing = !!focusId;
+
+        return rawNodes.map((n) => {
+            const kind = (n.data as any)?.kind;
+            if (kind === "header") return n;
+
+            const isFocus = focusId != null && n.id === focusId;
+            const isNeighbor = focusId != null && connectedIds.has(n.id) && !isFocus;
+            const isDim = isFocusing && !connectedIds.has(n.id);
+
+            const baseStyle = (n.style ?? {}) as React.CSSProperties;
+
+            return {
+                ...n,
+                data: {
+                    ...(n.data as any),
+                    isFocus,
+                    isNeighbor,
+                },
+                style: {
+                    ...baseStyle,
+                    opacity: isDim ? 0.35 : 1,
+                    boxShadow: isFocus
+                        ? `${baseStyle.boxShadow ?? ""}, 0 0 0 2px rgba(255,255,255,.10), 0 20px 60px rgba(0,0,0,.55)`
+                        : isNeighbor
+                            ? `${baseStyle.boxShadow ?? ""}, 0 0 0 1px rgba(255,255,255,.08), 0 16px 45px rgba(0,0,0,.45)`
+                            : (baseStyle.boxShadow as any),
+                },
+            } as Node;
+        });
+    }, [rawNodes, focusId, connectedIds]);
+
+    // Panel derivado
     const selectedNode = useMemo(() => {
         if (!selectedId) return null;
-        return nodes.find((n) => n.id === selectedId) ?? null;
-    }, [selectedId, nodes]);
+        return rawNodes.find((n) => n.id === selectedId) ?? null;
+    }, [selectedId, rawNodes]);
 
     const selectedSubject = useMemo(() => {
         if (!selectedNode) return null;
         const d: any = selectedNode.data ?? {};
-        return {
-            id: selectedNode.id,
-            name: d.title ?? "",
-            year: Number(d.year ?? 0),
-        };
+        return { id: selectedNode.id, name: d.title ?? "", year: Number(d.year ?? 0) };
     }, [selectedNode]);
 
     const panelInitialStatus = useMemo(() => {
@@ -420,48 +451,42 @@ export default function CareerMap() {
     }, [selectedNode]);
 
     return (
-        <>
-            <div style={{ width: "100%", height: "100vh" }}>
+        <div
+            style={{
+                height: "100%",
+                display: "grid",
+                gridTemplateColumns: selectedId ? "1fr 420px" : "1fr 0px",
+                transition: "grid-template-columns 220ms ease",
+                overflow: "hidden",
+            }}
+        >
+            {/* MAPA */}
+            <div style={{ minWidth: 0, height: "100%" }}>
                 <ReactFlow
-                    nodes={nodes}
+                    onInit={(inst) => {
+                        rf.current = inst;
+                    }}
+                    nodes={styledNodes}
                     edges={styledEdges}
                     nodeTypes={nodeTypes}
                     defaultEdgeOptions={{
                         type: "bezier",
-                        markerEnd: {
-                            type: MarkerType.ArrowClosed,
-                            width: 16,
-                            height: 16,
-                            color: "rgba(148,163,184,.30)",
-                        },
-                        style: {
-                            stroke: "rgba(148,163,184,.18)",
-                            strokeWidth: 1.2,
-                            opacity: 0.35,
-                        },
+                        markerEnd: { type: MarkerType.ArrowClosed, width: 9, height: 9, color: "rgba(148,163,184,.25)" },
+                        style: { stroke: "rgba(148,163,184,.16)", strokeWidth: 1.2, opacity: 0.32 },
                     }}
-                    fitView
-                    fitViewOptions={{ padding: 0.15, includeHiddenNodes: true }}
-                    minZoom={0.65}
-                    maxZoom={1.6}
-                    defaultViewport={{ x: 0, y: 0, zoom: 1 }}
-                    proOptions={{ hideAttribution: true }}
-
-                    // ✅ Scroll = mover el mapa (ruedita / trackpad)
-                    panOnScroll
-
-                    // ✅ No mover arrastrando
+                    // ✅ Ruedita = pan | Ctrl+ruedita = zoom (lo maneja ReactFlow)
                     panOnDrag={false}
-
-                    // ✅ Evitamos que la ruedita haga zoom
-                    zoomOnScroll={false}
-
-                    // ✅ Zoom con pinch (trackpad)
+                    panOnScroll
+                    zoomOnScroll
                     zoomOnPinch
-
-                    // ✅ Opcional: sin zoom por doble click
-                    zoomOnDoubleClick={false}
-
+                    preventScrolling={false}
+                    // ✅ cursor normal
+                    style={{ cursor: "default" }}
+                    minZoom={0.6}
+                    maxZoom={1.65}
+                    fitView
+                    fitViewOptions={{ padding: 0.18, includeHiddenNodes: true }}
+                    proOptions={{ hideAttribution: true }}
                     onNodeClick={(_, node) => {
                         const kind = (node.data as any)?.kind;
                         if (kind === "subject") setSelectedId(node.id);
@@ -479,15 +504,31 @@ export default function CareerMap() {
                 />
             </div>
 
-            <SubjectPanel
-                open={!!selectedId}
-                onClose={() => setSelectedId(null)}
-                subject={selectedSubject}
-                initialStatus={panelInitialStatus}
-                initialGrade={panelInitialGrade}
-                initialPassedVia={panelInitialPassedVia}
-                onSaved={() => setRefreshKey((k) => k + 1)}
-            />
-        </>
+            {/* PANEL (en layout, no encima) */}
+            <aside
+                style={{
+                    width: "100%",
+                    height: "100%",
+                    overflow: "hidden",
+                    borderLeft: selectedId ? "1px solid rgba(255,255,255,.08)" : "1px solid transparent",
+                    background: "rgba(0,0,0,.35)",
+                    backdropFilter: "blur(10px)",
+                    transform: selectedId ? "translateX(0)" : "translateX(16px)",
+                    opacity: selectedId ? 1 : 0,
+                    pointerEvents: selectedId ? "auto" : "none",
+                    transition: "transform 220ms ease, opacity 220ms ease",
+                }}
+            >
+                <SubjectPanel
+                    open={!!selectedId}
+                    onClose={() => setSelectedId(null)}
+                    subject={selectedSubject}
+                    initialStatus={panelInitialStatus}
+                    initialGrade={panelInitialGrade}
+                    initialPassedVia={panelInitialPassedVia}
+                    onSaved={() => setRefreshKey((k) => k + 1)}
+                />
+            </aside>
+        </div>
     );
 }

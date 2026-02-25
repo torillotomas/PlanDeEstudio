@@ -43,3 +43,15 @@ body {
 .react-flow__renderer {
   cursor: default !important;
 }
+
+/* Quita outline/selección fea default de ReactFlow */
+.react-flow__node:focus,
+.react-flow__node:focus-visible,
+.react-flow__node.selected {
+  outline: none !important;
+}
+
+/* Cursor normal en el pane */
+.react-flow__pane {
+  cursor: default !important;
+}

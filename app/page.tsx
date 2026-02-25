@@ -1,7 +1,12 @@
 import { supabase } from "@/lib/supabaseClient";
 import Link from "next/link";
+import { redirect } from "next/navigation";
+
+
 
 export default async function Home() {
+
+  redirect("/map");
   const planId = "ea89a8b8-a467-47ad-8182-f4d773d650b0";
 
   const { data: subjects, error } = await supabase

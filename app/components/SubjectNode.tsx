@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import type { NodeProps } from "reactflow";
 import { Handle, Position } from "reactflow";
 
@@ -18,22 +19,27 @@ type Data = {
     status?: Status;
     grade?: number | null;
     passedVia?: "promo" | "final" | null;
+
+    // flags visuales (los setea CareerMap)
+    isFocus?: boolean;
+    isNeighbor?: boolean;
 };
 
 const handleStyle: React.CSSProperties = {
     width: 10,
     height: 10,
     borderRadius: 999,
-    opacity: 0,            // 👈 invisible
+    opacity: 0,
     background: "transparent",
     border: "none",
+    pointerEvents: "none",
 };
 
 export default function SubjectNode(props: NodeProps<Data>) {
     const data = props.data ?? {};
     const title = data.title ?? "(sin título)";
 
-    // Header (Año 1/2/3) - sin handles
+    // Header (Año X)
     if (data.kind === "header") {
         return (
             <div
@@ -44,10 +50,12 @@ export default function SubjectNode(props: NodeProps<Data>) {
                     alignItems: "center",
                     justifyContent: "center",
                     color: "#9CA3AF",
-                    fontWeight: 700,
-                    fontSize: 14,
+                    fontWeight: 800,
+                    fontSize: 13,
                     userSelect: "none",
                     pointerEvents: "none",
+                    cursor: "default",
+                    letterSpacing: 0.4,
                 }}
             >
                 {title}
@@ -80,30 +88,32 @@ export default function SubjectNode(props: NodeProps<Data>) {
                 padding: "10px 14px",
                 gap: 6,
                 userSelect: "none",
+                cursor: "default",
                 fontFamily:
                     'ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial',
+                // ✅ NO ponemos outline/border extra acá
             }}
         >
-            {/* ✅ Handles invisibles para que ReactFlow pueda enganchar edges */}
+            {/* Handles TOP/BOTTOM invisibles */}
             <Handle
                 type="target"
                 position={Position.Top}
                 id="in"
                 isConnectable={false}
-                style={handleStyle}
+                style={{ ...handleStyle, top: -2 }}
             />
             <Handle
                 type="source"
                 position={Position.Bottom}
                 id="out"
                 isConnectable={false}
-                style={handleStyle}
+                style={{ ...handleStyle, bottom: -2 }}
             />
 
             <div
                 style={{
                     fontSize: 14,
-                    fontWeight: 700,
+                    fontWeight: 800,
                     lineHeight: 1.15,
                     letterSpacing: 0.2,
                     textShadow: "0 1px 0 rgba(0,0,0,.35)",
@@ -116,7 +126,7 @@ export default function SubjectNode(props: NodeProps<Data>) {
                 <div
                     style={{
                         fontSize: 12,
-                        fontWeight: 600,
+                        fontWeight: 650,
                         color: subtitleColor,
                         lineHeight: 1,
                         letterSpacing: 0.15,
@@ -134,7 +144,7 @@ export default function SubjectNode(props: NodeProps<Data>) {
                         top: 8,
                         right: 10,
                         fontSize: 11,
-                        fontWeight: 800,
+                        fontWeight: 900,
                         padding: "3px 7px",
                         borderRadius: 8,
                         background: "rgba(34,197,94,.9)",
