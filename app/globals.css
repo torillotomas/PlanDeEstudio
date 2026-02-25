@@ -24,3 +24,22 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* ===============================
+   ReactFlow cursor normal
+=============================== */
+
+/* Fondo del mapa */
+.react-flow__pane {
+  cursor: default !important;
+}
+
+/* Viewport interno */
+.react-flow__viewport {
+  cursor: default !important;
+}
+
+/* Renderer general */
+.react-flow__renderer {
+  cursor: default !important;
+}

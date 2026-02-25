@@ -1,6 +1,7 @@
 "use client";
 
 import type { NodeProps } from "reactflow";
+import { Handle, Position } from "reactflow";
 
 type Status =
     | "pendiente"
@@ -19,11 +20,20 @@ type Data = {
     passedVia?: "promo" | "final" | null;
 };
 
+const handleStyle: React.CSSProperties = {
+    width: 10,
+    height: 10,
+    borderRadius: 999,
+    opacity: 0,            // 👈 invisible
+    background: "transparent",
+    border: "none",
+};
+
 export default function SubjectNode(props: NodeProps<Data>) {
     const data = props.data ?? {};
     const title = data.title ?? "(sin título)";
 
-    // Header (Año 1/2/3)
+    // Header (Año 1/2/3) - sin handles
     if (data.kind === "header") {
         return (
             <div
@@ -74,6 +84,22 @@ export default function SubjectNode(props: NodeProps<Data>) {
                     'ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial',
             }}
         >
+            {/* ✅ Handles invisibles para que ReactFlow pueda enganchar edges */}
+            <Handle
+                type="target"
+                position={Position.Top}
+                id="in"
+                isConnectable={false}
+                style={handleStyle}
+            />
+            <Handle
+                type="source"
+                position={Position.Bottom}
+                id="out"
+                isConnectable={false}
+                style={handleStyle}
+            />
+
             <div
                 style={{
                     fontSize: 14,

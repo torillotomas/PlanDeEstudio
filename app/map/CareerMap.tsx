@@ -1,13 +1,7 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
-import ReactFlow, {
-    Background,
-    Controls,
-    MiniMap,
-    type Edge,
-    type Node,
-} from "reactflow";
+import React, { useEffect, useMemo, useState, useRef } from "react";
+import ReactFlow, { type Edge, type Node, MarkerType } from "reactflow";
 import "reactflow/dist/style.css";
 
 import SubjectNode from "@/app/components/SubjectNode";
@@ -52,10 +46,7 @@ const CELL_H = 110;
 const YEAR_LEFT_PAD = 180;
 const TOP_PAD = 40;
 
-function nodeStyleFor(
-    status: NodeStatus,
-    isHeader = false
-): React.CSSProperties {
+function nodeStyleFor(status: NodeStatus, isHeader = false): React.CSSProperties {
     if (isHeader) {
         return {
             width: YEAR_LEFT_PAD,
@@ -76,6 +67,8 @@ function nodeStyleFor(
         background: "rgba(15,15,15,.92)",
         color: "#fff",
         boxSizing: "border-box",
+        transition:
+            "box-shadow .12s ease, transform .12s ease, opacity .12s ease, border-color .12s ease",
     };
 
     if (status === "aprobada") {
@@ -127,6 +120,10 @@ export default function CareerMap() {
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [refreshKey, setRefreshKey] = useState(0);
 
+    // ✅ Hover para resaltar flechas
+    const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+    const hoverTimer = useRef<number | null>(null);
+
     const nodeTypes = useMemo(
         () => ({
             subject: SubjectNode,
@@ -151,20 +148,20 @@ export default function CareerMap() {
             if (error) return void console.error("Error subjects:", error);
 
             const s = (subjects ?? []) as SubjectRow[];
-            const years = Array.from(new Set(s.map((x) => x.year))).sort(
-                (a, b) => a - b
-            );
+            const years = Array.from(new Set(s.map((x) => x.year))).sort((a, b) => a - b);
 
-            // 2) Correlativas: SOLO PARA RENDIR
+            // 2) Correlativas (traemos todas y filtramos nosotros)
             const { data: prereqs, error: prereqErr } = await supabase
                 .from("subject_prereq")
-                .select("subject_id, prereq_subject_id, prereq_type")
-                .eq("prereq_type", "rendir");
+                .select("subject_id, prereq_subject_id, prereq_type");
 
             if (!alive) return;
             if (prereqErr) console.error("Error prereqs:", prereqErr);
 
-            const p = (prereqs ?? []) as PrereqRow[];
+            const pAll = (prereqs ?? []) as PrereqRow[];
+            const p = pAll.filter(
+                (r) => String(r.prereq_type ?? "").trim().toLowerCase() === "rendir"
+            );
 
             // 3) Estados
             const { data: statuses, error: statusErr } = await supabase
@@ -262,13 +259,9 @@ export default function CareerMap() {
                 // estado calculado usando SOLO rendir
                 let computedStatus: NodeStatus;
                 if (stt !== "pendiente") {
-                    computedStatus = stt; // aprobada / cursando / final_pendiente
+                    computedStatus = stt;
                 } else {
-                    computedStatus = !hasPrereqs
-                        ? "disponible"
-                        : allApproved
-                            ? "disponible"
-                            : "bloqueada";
+                    computedStatus = !hasPrereqs ? "disponible" : allApproved ? "disponible" : "bloqueada";
                 }
 
                 const grade = gradeById.get(subj.id);
@@ -301,7 +294,7 @@ export default function CareerMap() {
                     data: {
                         kind: "subject",
                         title: subj.name,
-                        year: subj.year, // 👈 para el panel
+                        year: subj.year,
                         subtitle: subtitle || undefined,
                         status: computedStatus,
                         grade: grade ?? null,
@@ -312,32 +305,83 @@ export default function CareerMap() {
                 };
             });
 
-            // Edges: color según correlativa cumplida o no
-            const baseEdges: Edge[] = p.map((r) => {
-                const prereqStatus = statusById.get(r.prereq_subject_id) ?? "pendiente";
-                const ok = prereqStatus === "aprobada";
+            setNodes([...headerNodes, ...subjectNodes]);
 
-                return {
+            setEdges(
+                p.map((r) => ({
                     id: `${r.prereq_subject_id}->${r.subject_id}`,
                     source: r.prereq_subject_id,
                     target: r.subject_id,
-                    type: "smoothstep",
-                    animated: false,
-                    style: {
-                        stroke: ok ? "rgba(34,197,94,.55)" : "rgba(148,163,184,.25)",
-                        strokeWidth: ok ? 2 : 1.25,
-                    },
-                };
-            });
 
-            setNodes([...headerNodes, ...subjectNodes]);
-            setEdges(baseEdges);
+                    // ✅ engancha a tus handles
+                    sourceHandle: "out",
+                    targetHandle: "in",
+
+                    type: "bezier",
+                    pathOptions: { curvature: 0.35 } as any,
+                    animated: false,
+                    data: {
+                        ok: (statusById.get(r.prereq_subject_id) ?? "pendiente") === "aprobada",
+                    },
+                })) as Edge[]
+            );
         })();
 
         return () => {
             alive = false;
         };
     }, [refreshKey]);
+
+    const styledEdges = useMemo(() => {
+        // ✅ prioridad: hover > selected
+        const activeNodeId = hoveredNodeId ?? selectedId;
+        const isActiveAny = activeNodeId != null;
+
+        return edges.map((e) => {
+            const ok = Boolean((e.data as any)?.ok);
+            const isConnected =
+                activeNodeId != null && (e.source === activeNodeId || e.target === activeNodeId);
+
+            // Base (apagado)
+            const baseStroke = ok ? "rgba(34,197,94,.35)" : "rgba(148,163,184,.22)";
+            const baseWidth = ok ? 1.4 : 1.2;
+
+            // Más apagado cuando hay un nodo activo pero esta arista no conecta
+            const dimStroke = ok ? "rgba(34,197,94,.14)" : "rgba(148,163,184,.08)";
+            const dimWidth = ok ? 1.05 : 1.0;
+
+            // Highlight
+            const hiStroke = ok ? "rgba(34,197,94,.90)" : "rgba(226,232,240,.80)";
+            const hiWidth = ok ? 2.2 : 2.0;
+
+            const stroke = isActiveAny ? (isConnected ? hiStroke : dimStroke) : baseStroke;
+            const strokeWidth = isActiveAny ? (isConnected ? hiWidth : dimWidth) : baseWidth;
+
+            // punta más chica (para que no quede gigante al resaltar)
+            const markerColor = stroke;
+
+            return {
+                ...e,
+                type: "bezier",
+                animated: Boolean(isConnected),
+                style: {
+                    stroke,
+                    strokeWidth,
+                    strokeDasharray: ok ? undefined : "5 6",
+                    opacity: isActiveAny ? (isConnected ? 1 : 0.18) : 0.38,
+                    filter: isConnected
+                        ? `drop-shadow(0 0 6px ${stroke}) drop-shadow(0 0 14px ${stroke})`
+                        : "none",
+                },
+                markerEnd: {
+                    type: MarkerType.ArrowClosed,
+                    width: isConnected ? 12 : 10,
+                    height: isConnected ? 12 : 10,
+                    color: markerColor,
+                },
+            } as Edge;
+        });
+    }, [edges, hoveredNodeId, selectedId]);
 
     // ✅ data derivada para el panel
     const selectedNode = useMemo(() => {
@@ -359,7 +403,6 @@ export default function CareerMap() {
         if (!selectedNode) return "pendiente";
         const d: any = selectedNode.data ?? {};
         const st = d.status as any;
-        // si está "disponible/bloqueada" lo tratamos como "pendiente" en el editor
         if (st === "disponible" || st === "bloqueada") return "pendiente";
         return (st ?? "pendiente") as Status;
     }, [selectedNode]);
@@ -381,21 +424,59 @@ export default function CareerMap() {
             <div style={{ width: "100%", height: "100vh" }}>
                 <ReactFlow
                     nodes={nodes}
-                    edges={edges}
+                    edges={styledEdges}
                     nodeTypes={nodeTypes}
+                    defaultEdgeOptions={{
+                        type: "bezier",
+                        markerEnd: {
+                            type: MarkerType.ArrowClosed,
+                            width: 16,
+                            height: 16,
+                            color: "rgba(148,163,184,.30)",
+                        },
+                        style: {
+                            stroke: "rgba(148,163,184,.18)",
+                            strokeWidth: 1.2,
+                            opacity: 0.35,
+                        },
+                    }}
                     fitView
                     fitViewOptions={{ padding: 0.15, includeHiddenNodes: true }}
                     minZoom={0.65}
                     maxZoom={1.6}
                     defaultViewport={{ x: 0, y: 0, zoom: 1 }}
                     proOptions={{ hideAttribution: true }}
+
+                    // ✅ Scroll = mover el mapa (ruedita / trackpad)
+                    panOnScroll
+
+                    // ✅ No mover arrastrando
+                    panOnDrag={false}
+
+                    // ✅ Evitamos que la ruedita haga zoom
+                    zoomOnScroll={false}
+
+                    // ✅ Zoom con pinch (trackpad)
+                    zoomOnPinch
+
+                    // ✅ Opcional: sin zoom por doble click
+                    zoomOnDoubleClick={false}
+
                     onNodeClick={(_, node) => {
                         const kind = (node.data as any)?.kind;
                         if (kind === "subject") setSelectedId(node.id);
                     }}
                     onPaneClick={() => setSelectedId(null)}
-                >
-                </ReactFlow>
+                    onNodeMouseEnter={(_, node) => {
+                        const kind = (node.data as any)?.kind;
+                        if (kind !== "subject") return;
+                        if (hoverTimer.current) window.clearTimeout(hoverTimer.current);
+                        setHoveredNodeId(node.id);
+                    }}
+                    onNodeMouseLeave={() => {
+                        hoverTimer.current = window.setTimeout(() => setHoveredNodeId(null), 80);
+                    }}
+                />
             </div>
 
             <SubjectPanel
