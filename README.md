@@ -1,199 +1,103 @@
-# planmaterias
+# PlanMaterias
 
-Visual career planner built with **Next.js + ReactFlow + Supabase** to
-manage and visualize a university curriculum as an interactive graph.
+Web app para armar y seguir tu carrera: materias por año/período,
+correlativas, estados (pendiente/cursando/final/aprobada), flechas de
+correlativas en la vista Timeline y mini-repo de archivos por materia
+(Supabase Storage).
 
-------------------------------------------------------------------------
+## Stack
 
-## ✨ Overview
+-   Next.js (App Router) + TypeScript
+-   Supabase (Auth + Postgres + Storage)
+-   UI modo dark
 
-**planmaterias** is a personal web application designed to visualize a
-full academic curriculum as a graph-based map.\
-Each subject appears as a node with status tracking, prerequisites,
-grades and a mini file repository.
+## Features (MVP actual)
 
-The goal is to provide a clear visual progression through a career plan
-while keeping personal academic resources organized.
+-   Login con Supabase
+-   Un plan/carrera por usuario (owner)
+-   ABM de materias por plan
+-   ABM de correlativas (rendir/cursar)
+-   Timeline con:
+    -   Cards por año
+    -   Flechas punteadas animadas entre correlativas
+    -   Panel lateral para editar estado
+-   Mini repo por usuario y materia:
+    -   Subida/descarga/borrado de archivos
+    -   Storage path: userId/subjectId/...
 
-------------------------------------------------------------------------
+## Variables de entorno
 
-## 🎯 Main Features
+Crear `.env.local` en la raíz:
 
-### 🧭 Interactive Career Map
+NEXT_PUBLIC_SUPABASE_URL=... NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 
--   Graph visualization powered by **ReactFlow**
--   Years displayed as horizontal rows
--   Grid layout per year (3 columns)
--   Dynamic spacing to prevent overlap
--   Header nodes for each year
+## Setup
 
-### 🎓 Academic Status System
+Instalar dependencias:
 
-Each subject can have one of four states:
-
--   `pendiente`
--   `cursando`
--   `final_pendiente`
--   `aprobada`
-
-Derived visual state:
-
--   `disponible` → subject becomes available when all prerequisites are
-    approved.
-
-### 📝 Grades
-
--   Grade range: **1 to 10**
--   Supports **0.25 increments**
--   Approval method:
-    -   promo
-    -   final
-
-### 🔗 Prerequisites Logic
-
--   Stored in `subject_prereq`
--   Currently only `rendir` prerequisites are used
--   A subject becomes available when all required subjects are approved.
-
-### 📎 Mini Repository per Subject
-
-Integrated file storage using Supabase:
-
--   Upload files
--   Signed URL access
--   Delete files
--   File types:
-    -   apunte
-    -   tp
-    -   otro
-
-### 🔐 Lightweight Security
-
--   Simple password gate
--   Next.js middleware protection
--   No full authentication (personal project)
-
-------------------------------------------------------------------------
-
-## 🧱 Tech Stack
-
--   **Next.js (App Router)**
--   **ReactFlow**
--   **Supabase**
-    -   PostgreSQL
-    -   Storage Buckets
--   TypeScript
-
-------------------------------------------------------------------------
-
-## 🚀 Local Development
-
-Install dependencies:
-
-``` bash
 npm install
-```
 
-Run dev server:
+Correr en desarrollo:
 
-``` bash
 npm run dev
-```
 
-Open:
+Build producción:
 
-http://localhost:3000
+npm run build npm run start
 
-------------------------------------------------------------------------
+## Modelo de datos (resumen)
 
-## 🔐 Environment Variables
+### plans
 
-Create a `.env.local` file:
-
-``` env
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
-APP_PASSWORD=
-APP_PASSWORD_COOKIE=
-```
-
-------------------------------------------------------------------------
-
-## 🗺️ Layout Details
-
--   Horizontal year layout
--   Dynamic block height calculation:
-    -   rowsNeeded = ceil(count / COLS_PER_YEAR)
-    -   blockHeight computed per year
--   ReactFlow custom nodes for subjects
-
-------------------------------------------------------------------------
-
-## 📦 Database Structure (Simplified)
+-   id (uuid)
+-   owner_id (uuid)
+-   name (text)
+-   mode (annual \| periodic)
+-   years_count (int)
+-   periods (text)
+-   created_at
 
 ### subjects
 
--   id
--   name
--   year
--   order_in_cell
+-   id (uuid)
+-   plan_id (uuid)
+-   name (text)
+-   year (int)
+-   period_key (text)
+-   order_in_cell (int)
 
 ### subject_prereq
 
--   subject_id
--   prereq_subject_id
--   prereq_type
+-   subject_id (uuid)
+-   prereq_subject_id (uuid)
+-   prereq_type (rendir \| cursar)
 
 ### user_subject_status
 
--   subject_id
--   status
--   grade
--   passed_via
--   approved_at
+-   user_id (uuid)
+-   subject_id (uuid)
+-   status (pendiente \| cursando \| final_pendiente \| aprobada)
+-   grade (numeric)
+-   passed_via (promo \| final)
+
+(Recomendado: unique user_id + subject_id)
 
 ### subject_files
 
--   id
--   subject_id
--   title
--   file_type
--   storage_path
+-   id (uuid)
+-   user_id (uuid)
+-   subject_id (uuid)
+-   title (text)
+-   file_type (apunte \| tp \| otro)
+-   storage_path (text)
+
+## Roadmap
+
+-   RLS completo en tablas y storage
+-   Upsert por (user_id, subject_id)
+-   Import por lista/CSV
+-   Mejoras UI (buscadores, nodos full color)
 
 ------------------------------------------------------------------------
 
-## 📎 Storage
-
-Bucket:
-
-planmaterias-files
-
-Files stored using path pattern:
-
-subjectId/timestamp-filename
-
-------------------------------------------------------------------------
-
-## ⚠️ Notes
-
-This project is intended for **personal use**.
-
--   Uses anon Supabase key
--   RLS policies allow personal workflow
--   Security may be hardened later with server routes
-
-------------------------------------------------------------------------
-
-## 🧭 Future Improvements
-
--   File count badge on nodes
--   Smarter zoom & viewport UX
--   Server-side upload routes
--   Vercel deployment
-
-------------------------------------------------------------------------
-
-## 👨‍💻 Author
-
-Personal project created to experiment with graph-based academic
-planning using modern web technologies.
+Proyecto en progreso.

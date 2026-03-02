@@ -10,6 +10,7 @@ type FileType = "apunte" | "tp" | "otro";
 
 type FileRow = {
     id: string;
+    user_id: string;
     subject_id: string;
     title: string;
     file_type: FileType;
@@ -46,7 +47,7 @@ export default function SubjectPanel({
     const [err, setErr] = useState<string>("");
 
     // =========================
-    // Mini-repo
+    // Mini-repo (por usuario)
     // =========================
     const [files, setFiles] = useState<FileRow[]>([]);
     const [filesLoading, setFilesLoading] = useState(false);
@@ -71,25 +72,37 @@ export default function SubjectPanel({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [open, subject?.id]);
 
+    const getUidOrThrow = async () => {
+        const { data, error } = await supabase.auth.getUser();
+        if (error) throw error;
+        const uid = data?.user?.id;
+        if (!uid) throw new Error("No hay usuario autenticado");
+        return uid;
+    };
+
     const refreshFiles = async () => {
         if (!subject) return;
         setFilesLoading(true);
         setRepoErr("");
 
-        const { data, error } = await supabase
-            .from("subject_files")
-            .select("id,subject_id,title,file_type,storage_path,created_at")
-            .eq("subject_id", subject.id)
-            .order("created_at", { ascending: false });
+        try {
+            const uid = await getUidOrThrow();
 
-        if (error) {
-            setRepoErr(error.message);
+            const { data, error } = await supabase
+                .from("subject_files")
+                .select("id,user_id,subject_id,title,file_type,storage_path,created_at")
+                .eq("subject_id", subject.id)
+                .eq("user_id", uid)
+                .order("created_at", { ascending: false });
+
+            if (error) throw error;
+
+            setFiles((data ?? []) as FileRow[]);
+        } catch (e: any) {
+            setRepoErr(e?.message ?? "Error cargando archivos");
+        } finally {
             setFilesLoading(false);
-            return;
         }
-
-        setFiles((data ?? []) as FileRow[]);
-        setFilesLoading(false);
     };
 
     const parsedGrade = useMemo(() => {
@@ -116,22 +129,35 @@ export default function SubjectPanel({
         return true;
     }, [subject, status, isValidGrade, passedVia]);
 
+    // =========================
+    // ✅ GUARDAR ESTADO (por usuario)
+    // =========================
     const saveStatus = async () => {
         if (!subject) return;
         setSaving(true);
         setErr("");
 
         try {
+            const uid = await getUidOrThrow();
+
             if (status === "pendiente") {
-                const { error } = await supabase.from("user_subject_status").delete().eq("subject_id", subject.id);
+                // ✅ borrar SOLO el estado de este usuario
+                const { error } = await supabase
+                    .from("user_subject_status")
+                    .delete()
+                    .eq("user_id", uid)
+                    .eq("subject_id", subject.id);
+
                 if (error) throw error;
             } else {
                 const payload: any = {
+                    user_id: uid, // ✅ clave multiusuario
                     subject_id: subject.id,
                     status,
                     grade: null,
                     passed_via: null,
                     approved_at: null,
+                    updated_at: new Date().toISOString(),
                 };
 
                 if (status === "aprobada") {
@@ -140,7 +166,11 @@ export default function SubjectPanel({
                     payload.approved_at = new Date().toISOString();
                 }
 
-                const { error } = await supabase.from("user_subject_status").upsert(payload, { onConflict: "subject_id" });
+                // ✅ upsert por (user_id, subject_id)
+                const { error } = await supabase
+                    .from("user_subject_status")
+                    .upsert(payload, { onConflict: "user_id,subject_id" });
+
                 if (error) throw error;
             }
 
@@ -153,7 +183,7 @@ export default function SubjectPanel({
     };
 
     // =========================
-    // Upload / Download / Delete
+    // Upload / Download / Delete (por usuario)
     // =========================
     const onPickFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const picked = e.target.files;
@@ -166,10 +196,13 @@ export default function SubjectPanel({
         setRepoErr("");
 
         try {
+            const uid = await getUidOrThrow();
+
             for (const file of pickedArr) {
                 const safeName = file.name.replace(/[^\w.\-() ]+/g, "_");
                 const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-                const storagePath = `${subject.id}/${stamp}-${safeName}`;
+
+                const storagePath = `${uid}/${subject.id}/${stamp}-${safeName}`;
 
                 const { error: upErr } = await supabase.storage.from(BUCKET).upload(storagePath, file, {
                     upsert: false,
@@ -178,6 +211,7 @@ export default function SubjectPanel({
                 if (upErr) throw upErr;
 
                 const { error: insErr } = await supabase.from("subject_files").insert({
+                    user_id: uid,
                     subject_id: subject.id,
                     title: file.name,
                     file_type: fileType,
@@ -187,8 +221,8 @@ export default function SubjectPanel({
             }
 
             await refreshFiles();
-        } catch (e: any) {
-            setRepoErr(e?.message ?? "Error subiendo archivos");
+        } catch (e2: any) {
+            setRepoErr(e2?.message ?? "Error subiendo archivos");
         } finally {
             setUploading(false);
             e.target.value = "";
@@ -255,9 +289,7 @@ export default function SubjectPanel({
             {/* Header */}
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
                 <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 12, color: "rgba(156,163,175,.95)" }}>
-                        {subject ? `Año ${subject.year}` : ""}
-                    </div>
+                    <div style={{ fontSize: 12, color: "rgba(156,163,175,.95)" }}>{subject ? `Año ${subject.year}` : ""}</div>
                     <div
                         style={{
                             fontSize: 16,
@@ -396,12 +428,7 @@ export default function SubjectPanel({
                         <div style={{ fontSize: 12, color: "rgba(156,163,175,.95)", marginBottom: 6 }}>Tipo de archivo</div>
 
                         <div style={selectWrap}>
-                            <select
-                                value={fileType}
-                                onChange={(e) => setFileType(e.target.value as FileType)}
-                                style={select}
-                                disabled={uploading}
-                            >
+                            <select value={fileType} onChange={(e) => setFileType(e.target.value as FileType)} style={select} disabled={uploading}>
                                 <option value="apunte">Apunte</option>
                                 <option value="tp">TP</option>
                                 <option value="otro">Otro</option>
@@ -411,15 +438,7 @@ export default function SubjectPanel({
 
                         <div style={{ fontSize: 12, color: "rgba(156,163,175,.95)", margin: "10px 0 6px" }}>Subir archivos</div>
 
-                        {/* Hidden input */}
-                        <input
-                            ref={fileInputRef}
-                            type="file"
-                            multiple
-                            onChange={onPickFiles}
-                            disabled={!subject || uploading}
-                            style={{ display: "none" }}
-                        />
+                        <input ref={fileInputRef} type="file" multiple onChange={onPickFiles} disabled={!subject || uploading} style={{ display: "none" }} />
 
                         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                             <button
@@ -458,9 +477,7 @@ export default function SubjectPanel({
                             </div>
                         </div>
 
-                        {uploading && (
-                            <div style={{ marginTop: 8, fontSize: 12, color: "rgba(156,163,175,.95)" }}>Subiendo...</div>
-                        )}
+                        {uploading && <div style={{ marginTop: 8, fontSize: 12, color: "rgba(156,163,175,.95)" }}>Subiendo...</div>}
                     </div>
 
                     {repoErr && (

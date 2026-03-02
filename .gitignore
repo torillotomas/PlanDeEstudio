@@ -1,39 +1,37 @@
-# =========================
-# Node / Next.js
-# =========================
-node_modules
-.next
-out
-dist
+Node
 
-# Logs
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
+node_modules/ npm-debug.log yarn-debug.log pnpm-debug.log*
 
-# Env files (MUY IMPORTANTE)
-.env
-.env.local
-.env.development.local
+Next.js
+
+.next/ out/ dist/ build/
+
+Env files
+
+.env .env.local .env.development.local .env.test.local
 .env.production.local
-.env.test.local
 
-# Supabase
-.supabase
+Logs
 
-# OS
-.DS_Store
-Thumbs.db
+logs/ *.log
 
-# Editor
-.vscode/*
-!.vscode/extensions.json
-.idea
+Editor / OS
 
-# Typescript
+.DS_Store Thumbs.db .vscode/ .idea/
+
+TypeScript
+
 *.tsbuildinfo
 
-# Misc
-coverage
-.vercel
+Coverage
+
+coverage/
+
+Cache
+
+.cache/ .turbo/ .eslintcache
+
+Supabase local
+
+supabase/.branches/ supabase/.temp/ supabase/.cache/ supabase/logs/
+supabase/.env

@@ -6,10 +6,14 @@ import SubjectCard from "./SubjectCard";
 import PrereqEdgesLayer from "./PrereqEdgesLayer";
 import { useCareerData } from "@/lib/career/useCareerData";
 import type { NodeStatus } from "@/lib/career/computeSubjectStatus";
-
-const PLAN_ID = "ea89a8b8-a467-47ad-8182-f4d773d650b0";
+import { useMyPlan } from "@/lib/career/useMyPlan";
+import { useRouter } from "next/navigation";
 
 export default function CareerTimeline() {
+    // 1) Plan actual del usuario
+    const { loading: planLoading, error: planError, planId, plan } = useMyPlan();
+    const router = useRouter();
+    // 2) Data académica (acepta string | null)
     const {
         loading,
         error,
@@ -25,16 +29,16 @@ export default function CareerTimeline() {
         panelInitialGrade,
         panelInitialPassedVia,
         refresh,
-    } = useCareerData(PLAN_ID);
+    } = useCareerData(planId);
 
-    // hover como en el mapa (con delay pequeño)
+    // hover (con delay)
     const [hoveredId, setHoveredId] = useState<string | null>(null);
     const hoverTimer = useRef<number | null>(null);
 
-    // foco: seleccionado gana sobre hover
+    // foco: selected > hover
     const focusId = selectedId ?? hoveredId;
 
-    // edges base (from=prereq -> to=subject)
+    // edges base
     const edges = useMemo(() => {
         return prereqsRendir.map((r) => ({
             from: r.prereq_subject_id,
@@ -42,12 +46,11 @@ export default function CareerTimeline() {
         }));
     }, [prereqsRendir]);
 
-    // ids conectados al foco (vecinos)
+    // ids conectados al foco
     const connectedIds = useMemo(() => {
         const set = new Set<string>();
         if (!focusId) return set;
         set.add(focusId);
-
         for (const e of edges) {
             if (e.from === focusId) set.add(e.to);
             if (e.to === focusId) set.add(e.from);
@@ -55,7 +58,7 @@ export default function CareerTimeline() {
         return set;
     }, [edges, focusId]);
 
-    // para pasarle al SVG: status de cada subject
+    // meta para SVG
     const subjectsMeta = useMemo(() => {
         return subjects.map((s) => ({
             id: s.id,
@@ -63,7 +66,7 @@ export default function CareerTimeline() {
         }));
     }, [subjects]);
 
-    // Re-mount cuando cambia layout (panel/years)
+    // remount edges al cambiar layout
     const [edgesVersion, setEdgesVersion] = useState(0);
     useEffect(() => {
         const t = window.setTimeout(() => setEdgesVersion((v) => v + 1), 30);
@@ -72,7 +75,55 @@ export default function CareerTimeline() {
 
     const hasPanel = !!selectedId;
 
+    // ✅ Estado superior (plan loading/error/no plan) SIN returns tempranos
+    const topState = useMemo(() => {
+        if (planLoading) {
+            return (
+                <div style={{ padding: 18, color: "rgba(156,163,175,.95)", fontSize: 13 }}>
+                    Cargando plan…
+                </div>
+            );
+        }
+
+        if (planError) {
+            return (
+                <div
+                    style={{
+                        padding: 14,
+                        margin: 18,
+                        borderRadius: 12,
+                        background: "rgba(239,68,68,.12)",
+                        border: "1px solid rgba(239,68,68,.25)",
+                        color: "rgba(254,202,202,.95)",
+                        fontSize: 12,
+                    }}
+                >
+                    {planError}
+                </div>
+            );
+        }
+
+        if (!planId) {
+            return (
+                <div style={{ padding: 18 }}>
+                    <div style={{ color: "rgba(229,231,235,.92)", fontWeight: 900 }}>
+                        No tenés una carrera creada.
+                    </div>
+                    <div style={{ marginTop: 8, color: "rgba(156,163,175,.95)", fontSize: 12 }}>
+                        Andá a “Crear carrera” y después cargamos materias.
+                    </div>
+                </div>
+            );
+        }
+
+        return null;
+    }, [planLoading, planError, planId]);
+
+    // ✅ Content SIEMPRE definido (aunque esté en loading/no plan)
     const content = useMemo(() => {
+        // Si hay topState (cargando plan/error/no plan), mostramos eso.
+        if (topState) return topState;
+
         if (loading) {
             return (
                 <div style={{ padding: 18, color: "rgba(156,163,175,.95)", fontSize: 13 }}>
@@ -99,6 +150,38 @@ export default function CareerTimeline() {
             );
         }
 
+        // Empty state: plan existe pero no hay materias
+        if (subjects.length === 0) {
+            return (
+                <div style={{ padding: 18 }}>
+                    <div style={{ fontSize: 14, fontWeight: 950, color: "#fff" }}>
+                        {plan?.name ?? "Tu carrera"}
+                    </div>
+
+                    <div style={{ marginTop: 8, fontSize: 12, color: "rgba(156,163,175,.95)" }}>
+                        Todavía no cargaste materias.
+                    </div>
+
+                    <button
+                        onClick={() => router.push("/subjects")}
+                        style={{
+                            marginTop: 14,
+                            border: "1px solid rgba(59,130,246,.45)",
+                            background: "rgba(59,130,246,.18)",
+                            color: "#fff",
+                            borderRadius: 12,
+                            padding: "10px 14px",
+                            cursor: "pointer",
+                            fontWeight: 900,
+                            fontSize: 12,
+                        }}
+                    >
+                        Ir a Materias
+                    </button>
+                </div>
+            );
+        }
+
         return (
             <div
                 style={{
@@ -106,7 +189,7 @@ export default function CareerTimeline() {
                     paddingRight: 18,
                     display: "flex",
                     flexDirection: "column",
-                    gap: 34, // ✅ más aire entre años
+                    gap: 34,
                 }}
             >
                 {years.map((year) => {
@@ -142,11 +225,8 @@ export default function CareerTimeline() {
                             <div
                                 style={{
                                     display: "grid",
-                                    // ✅ cards un poco más chicas (mínimo menor)
                                     gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
-                                    // ✅ más separación entre cards
                                     gap: 22,
-                                    // ✅ un pelín más aire vertical
                                     rowGap: 24,
                                 }}
                             >
@@ -190,14 +270,17 @@ export default function CareerTimeline() {
             </div>
         );
     }, [
+        topState,
         loading,
         error,
+        subjects.length,
         years,
         subjectsByYear,
         selectedId,
         setSelectedId,
         focusId,
         connectedIds,
+        plan?.name,
     ]);
 
     return (
@@ -227,7 +310,6 @@ export default function CareerTimeline() {
                     scrollContainerId="timeline-scroll"
                 />
 
-                {/* Scroll normal */}
                 <div
                     id="timeline-scroll"
                     style={{
@@ -247,7 +329,7 @@ export default function CareerTimeline() {
                 </div>
             </div>
 
-            {/* PANEL (empuja layout) */}
+            {/* PANEL */}
             <aside
                 style={{
                     width: "100%",

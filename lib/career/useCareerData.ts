@@ -23,6 +23,7 @@ type PrereqRow = {
 };
 
 type StatusRow = {
+    user_id: string;
     subject_id: string;
     status: Status;
     grade: number | null;
@@ -51,11 +52,11 @@ export type SubjectComputed = {
     // estado calculado (lo que usabas para pintar)
     computedStatus: NodeStatus;
 
-    // UI helper (igual a CareerMap)
+    // UI helper
     subtitle?: string;
 };
 
-export function useCareerData(planId: string) {
+export function useCareerData(planId: string | null) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string>("");
 
@@ -70,9 +71,19 @@ export function useCareerData(planId: string) {
     const clearSelection = () => setSelectedId(null);
 
     // =========================
-    // FETCH (misma data que CareerMap)
+    // FETCH
     // =========================
     useEffect(() => {
+        // ✅ si todavía no hay plan seleccionado, no hacemos queries
+        if (!planId) {
+            setLoading(false);
+            setError("");
+            setSubjectsRaw([]);
+            setPrereqsRaw([]);
+            setStatusesRaw([]);
+            return;
+        }
+
         let alive = true;
 
         (async () => {
@@ -80,6 +91,14 @@ export function useCareerData(planId: string) {
             setError("");
 
             try {
+                // 0) Usuario actual (para filtrar estados)
+                const { data: userData, error: userErr } = await supabase.auth.getUser();
+                if (!alive) return;
+                if (userErr) throw userErr;
+
+                const uid = userData?.user?.id;
+                if (!uid) throw new Error("No hay usuario autenticado");
+
                 // 1) Materias
                 const { data: subjects, error: subjErr } = await supabase
                     .from("subjects")
@@ -99,10 +118,11 @@ export function useCareerData(planId: string) {
                 if (!alive) return;
                 if (preErr) throw preErr;
 
-                // 3) Estados
+                // 3) Estados (✅ por usuario)
                 const { data: statuses, error: stErr } = await supabase
                     .from("user_subject_status")
-                    .select("subject_id,status,grade,passed_via");
+                    .select("user_id,subject_id,status,grade,passed_via")
+                    .eq("user_id", uid);
 
                 if (!alive) return;
                 if (stErr) throw stErr;
@@ -125,7 +145,7 @@ export function useCareerData(planId: string) {
     }, [planId, refreshKey]);
 
     // =========================
-    // MAPS (igual que en CareerMap)
+    // MAPS
     // =========================
     const statusById = useMemo(() => {
         const m = new Map<string, Status>();
@@ -163,13 +183,15 @@ export function useCareerData(planId: string) {
     }, [prereqsRendir]);
 
     // =========================
-    // SUBJECTS ENRICHED (computedStatus + subtitle)
+    // SUBJECTS ENRICHED
     // =========================
     const subjects: SubjectComputed[] = useMemo(() => {
         return subjectsRaw.map((subj) => {
             const userStatus = statusById.get(subj.id) ?? "pendiente";
+
             const prereqIds = prereqsBySubject.get(subj.id) ?? [];
             const hasPrereqs = prereqIds.length > 0;
+
             const allApproved = prereqIds.every(
                 (pr) => (statusById.get(pr) ?? "pendiente") === "aprobada"
             );
@@ -183,7 +205,6 @@ export function useCareerData(planId: string) {
             const grade = gradeById.get(subj.id) ?? null;
             const passedVia = passedById.get(subj.id) ?? null;
 
-            // Igual a tu lógica actual de subtitle
             const subtitle =
                 computedStatus === "aprobada" && grade != null
                     ? `${grade.toFixed(2)} • ${passedVia === "promo" ? "Promo" : "Final"}`
@@ -233,7 +254,7 @@ export function useCareerData(planId: string) {
     }, [subjects]);
 
     // =========================
-    // PANEL (misma derivación que CareerMap)
+    // PANEL
     // =========================
     const selectedSubject = useMemo(() => {
         if (!selectedId) return null;
@@ -248,7 +269,6 @@ export function useCareerData(planId: string) {
         if (!s) return "pendiente";
 
         const st = s.computedStatus;
-        // Igual que antes: disponible/bloqueada => "pendiente"
         if (st === "disponible" || st === "bloqueada") return "pendiente";
         return (st ?? "pendiente") as Status;
     }, [selectedId, subjects]);
@@ -266,26 +286,21 @@ export function useCareerData(planId: string) {
     }, [selectedId, subjects]);
 
     return {
-        // estados generales
         loading,
         error,
         refresh,
 
-        // data
         subjects,
         years,
         subjectsByYear,
 
-        // prereqs (por si lo necesitás en CareerMap para edges)
         prereqsRendir,
         prereqsBySubject,
 
-        // selección
         selectedId,
         setSelectedId,
         clearSelection,
 
-        // panel (compatibles con tu SubjectPanel)
         selectedSubject,
         panelInitialStatus,
         panelInitialGrade,
